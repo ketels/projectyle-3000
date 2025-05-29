@@ -62,19 +62,17 @@ export function updateAI(playerId) {
         moveAITowardTarget(activeCharacter, aiState.target, playerId);
     }
     
-    // AI Kicking logic with timing
-    if (settings.strategy > 0.5) { // Only medium/hard AI kicks strategically
-        const distToPuck = distance(activeCharacter, gameState.puck);
-        if (distToPuck <= CONFIG.KICK_RANGE && gameState.kickCooldowns[playerId] === 0) {
-            // Check if we should delay the kick for better alignment
-            const delayKick = shouldDelayKick(playerId, activeCharacter, settings);
-            
-            if (!delayKick) {
-                // Decide whether to kick based on situation
-                const shouldKick = shouldAIKick(playerId, activeCharacter, settings);
-                if (shouldKick) {
-                    if (window.tryKick) window.tryKick(playerId);
-                }
+    // AI Kicking logic - MORE AGGRESSIVE!
+    const distToPuck = distance(activeCharacter, gameState.puck);
+    if (distToPuck <= CONFIG.KICK_RANGE && gameState.kickCooldowns[playerId] === 0) {
+        // Less strategic delays - kick more often!
+        const delayKick = settings.strategy > 0.8 ? shouldDelayKick(playerId, activeCharacter, settings) : false;
+        
+        if (!delayKick) {
+            // Decide whether to kick based on situation
+            const shouldKick = shouldAIKick(playerId, activeCharacter, settings);
+            if (shouldKick) {
+                if (window.tryKick) window.tryKick(playerId);
             }
         }
     }
@@ -98,32 +96,13 @@ function makeAIDecision(playerId, settings, aiState, activeCharacter) {
             // High threat - prioritize defense
             aiState.strategy = 'urgent_defend';
         } else if (currentRoom === 'center') {
-            // In center room - more complex decision making
-            const otherAIs = getOtherAIPlayers(playerId);
-            const hasTeammate = otherAIs.length > 0;
-            
-            if (puckDistance < 100) {
-                // Check if teammate is closer to puck
-                let teammateCloser = false;
-                otherAIs.forEach(ai => {
-                    if (distance(ai.character, gameState.puck) < puckDistance - 30) {
-                        teammateCloser = true;
-                    }
-                });
-                
-                if (teammateCloser && settings.strategy > 0.7) {
-                    // Let teammate handle puck, we position for pass
-                    aiState.strategy = 'support';
-                } else {
-                    aiState.strategy = 'push_to_portal';
-                }
+            // In center room - AGGRESSIVE goal-seeking behavior
+            if (puckDistance < 150) {
+                // Close to puck - always try to score!
+                aiState.strategy = 'push_to_portal';
             } else {
-                // Smart positioning when far from puck
-                if (settings.strategy > 0.8 && hasTeammate) {
-                    aiState.strategy = 'strategic_position';
-                } else {
-                    aiState.strategy = 'intercept';
-                }
+                // Far from puck - aggressively intercept
+                aiState.strategy = 'intercept';
             }
         } else if (isMyDefensiveZone(currentRoom, playerId)) {
             // Enhanced defensive decision making
@@ -137,24 +116,18 @@ function makeAIDecision(playerId, settings, aiState, activeCharacter) {
             } else {
                 aiState.strategy = 'goalkeeper';
             }
-        } else if (puckDistance < 100) {
-            // Close to puck - evaluate best action
+        } else if (puckDistance < 150) {
+            // Close to puck - ALWAYS be aggressive!
             const enemyGoal = getBestEnemyGoal(currentRoom, playerId);
-            if (enemyGoal && distance(activeCharacter, enemyGoal) < 300) {
+            if (enemyGoal) {
                 aiState.strategy = 'shoot_on_goal';
             } else {
+                // No direct goal available - push toward center to find scoring opportunities
                 aiState.strategy = 'attack';
             }
         } else {
-            // Far from puck - intercept or position
-            const prediction = predictPuckPosition(settings.predictionFrames * 2);
-            const futureDist = distance(activeCharacter, prediction);
-            
-            if (futureDist < puckDistance) {
-                aiState.strategy = 'intercept';
-            } else {
-                aiState.strategy = 'position';
-            }
+            // Far from puck - aggressive intercept, never just "position"
+            aiState.strategy = 'intercept';
         }
     } else {
         // Simple AI behavior - just follow the ball
@@ -212,17 +185,9 @@ function setAITarget(playerId, aiState, activeCharacter, settings) {
             break;
             
         case 'position':
-            // Strategic positioning based on game state
-            const room = rooms[gameState.puck.currentRoom];
-            if (gameState.puck.currentRoom === 'frantic_zone') {
-                // In frantic zone, stay central but avoid other players
-                targetX = room.x + (Math.random() - 0.5) * 200;
-                targetY = room.y + (Math.random() - 0.5) * 200;
-            } else {
-                // In other rooms, position strategically
-                targetX = room.x + (Math.random() - 0.5) * room.width * 0.4;
-                targetY = room.y + (Math.random() - 0.5) * room.height * 0.4;
-            }
+            // No passive positioning - always chase the puck!
+            targetX = gameState.puck.x;
+            targetY = gameState.puck.y;
             break;
             
         case 'push_to_portal':
@@ -246,17 +211,22 @@ function setAITarget(playerId, aiState, activeCharacter, settings) {
             if (portals.length > 0) {
                 let bestPortal;
                 
-                if (settings.strategy > 0.7) {
-                    // Smart AI: Choose portal that leads to enemy defensive zone
-                    const enemyPortals = portals.filter(p => 
-                        p.name.includes('player') && !p.name.includes(`player${playerId}`)
-                    );
-                    bestPortal = enemyPortals.length > 0 ? 
-                        enemyPortals[Math.floor(Math.random() * enemyPortals.length)] : 
-                        portals[Math.floor(Math.random() * portals.length)];
+                // ALWAYS prioritize enemy defensive zones for scoring!
+                const enemyPortals = portals.filter(p => 
+                    p.name.includes('player') && !p.name.includes(`player${playerId}`)
+                );
+                
+                if (enemyPortals.length > 0) {
+                    // Choose the closest enemy portal for faster scoring
+                    bestPortal = enemyPortals.reduce((closest, portal) => {
+                        const distToCurrent = distance(activeCharacter, portal);
+                        const distToClosest = distance(activeCharacter, closest);
+                        return distToCurrent < distToClosest ? portal : closest;
+                    });
                 } else {
-                    // Simple AI: Choose random portal
-                    bestPortal = portals[Math.floor(Math.random() * portals.length)];
+                    // No enemy portals available, try frantic zone
+                    const franticPortal = portals.find(p => p.name === 'frantic_zone');
+                    bestPortal = franticPortal || portals[0];
                 }
                 
                 // Position behind puck to push it toward portal
@@ -323,42 +293,17 @@ function setAITarget(playerId, aiState, activeCharacter, settings) {
             break;
             
         case 'support':
-            // Position to support teammate who has the puck
-            const supportRoom = rooms[gameState.puck.currentRoom];
-            if (supportRoom) {
-                // Position ahead of puck movement for potential pass
-                const futurePos = predictPuckPosition(15);
-                targetX = futurePos.x + (Math.random() - 0.5) * 100;
-                targetY = futurePos.y + (Math.random() - 0.5) * 100;
-                
-                // Stay within room bounds
-                targetX = Math.max(supportRoom.x - supportRoom.width/2 + 50, 
-                                 Math.min(targetX, supportRoom.x + supportRoom.width/2 - 50));
-                targetY = Math.max(supportRoom.y - supportRoom.height/2 + 50,
-                                 Math.min(targetY, supportRoom.y + supportRoom.height/2 - 50));
-            }
+            // Even "support" should be aggressive - go for the puck!
+            const supportPrediction = predictPuckPosition(15);
+            targetX = supportPrediction.x;
+            targetY = supportPrediction.y;
             break;
             
         case 'strategic_position':
-            // Advanced positioning based on game state
-            const stratRoom = rooms[gameState.puck.currentRoom];
-            if (stratRoom) {
-                // Position based on multiple factors
-                const puckSpeed = Math.sqrt(gameState.puck.vx * gameState.puck.vx + gameState.puck.vy * gameState.puck.vy);
-                
-                if (puckSpeed < 2) {
-                    // Puck is slow - position aggressively
-                    const midpointX = (gameState.puck.x + activeCharacter.x) / 2;
-                    const midpointY = (gameState.puck.y + activeCharacter.y) / 2;
-                    targetX = midpointX;
-                    targetY = midpointY;
-                } else {
-                    // Puck is fast - predict and intercept
-                    const longPrediction = predictPuckPosition(30);
-                    targetX = longPrediction.x;
-                    targetY = longPrediction.y;
-                }
-            }
+            // No passive positioning - always go for intercept!
+            const futurePos = predictPuckPosition(20);
+            targetX = futurePos.x;
+            targetY = futurePos.y;
             break;
             
         case 'goalkeeper':
@@ -627,7 +572,6 @@ function shouldGoForPowerUp(playerId, character, settings) {
 
 function getOptimalDefensivePosition(playerId, myGoal) {
     // Calculate optimal defensive position based on puck trajectory
-    const prediction = predictPuckPosition(20);
     const puckToGoalX = myGoal.x - gameState.puck.x;
     const puckToGoalY = myGoal.y - gameState.puck.y;
     const dist = Math.sqrt(puckToGoalX * puckToGoalX + puckToGoalY * puckToGoalY);
@@ -735,8 +679,8 @@ export function shouldAIKick(playerId, character, settings) {
     const currentRoom = gameState.puck.currentRoom;
     const aiState = gameState.aiState[playerId];
     
-    // Don't kick randomly - only kick with purpose
-    if (Math.random() > settings.strategy) return false;
+    // BE MORE AGGRESSIVE - kick more often!
+    if (Math.random() > Math.max(0.7, settings.strategy)) return false;
     
     // Enhanced kicking decisions based on current strategy
     switch (aiState.strategy) {
@@ -746,7 +690,7 @@ export function shouldAIKick(playerId, character, settings) {
             const enemyGoal = getBestEnemyGoal(currentRoom, playerId);
             if (enemyGoal) {
                 const alignment = calculateKickAlignment(character, gameState.puck, enemyGoal);
-                return alignment > 0.6; // Lower threshold for attacking
+                return alignment > 0.4; // Much lower threshold for more aggressive attacking!
             }
             break;
             
@@ -805,51 +749,51 @@ export function shouldAIKick(playerId, character, settings) {
             break;
     }
     
-    // General kicking logic with zone control
+    // General kicking logic - more aggressive
     if (currentRoom !== 'center') {
         const enemyGoal = getBestEnemyGoal(currentRoom, playerId);
         if (enemyGoal) {
             const alignment = calculateKickAlignment(character, gameState.puck, enemyGoal);
             const puckToGoal = distance(gameState.puck, enemyGoal);
             
-            // Smart AI considers power-ups
-            let kickThreshold = 0.7;
+            // More aggressive kick thresholds
+            let kickThreshold = 0.4;
             if (gameState.powerUps.playerEffects[playerId].speed > 0) {
-                kickThreshold = 0.6; // More aggressive with speed boost
+                kickThreshold = 0.3; // Even more aggressive with speed boost
             }
             
-            if (alignment > kickThreshold && puckToGoal > 100) {
+            if (alignment > kickThreshold && puckToGoal > 80) {
                 return true;
             }
         }
     } else {
-        // In center room - avoid kicking to opponent defensive zones
+        // In center room - actively kick toward enemy zones
         const room = rooms[currentRoom];
         if (room && room.connections) {
-            // Check if kick would send puck toward opponent zone
+            // Prioritize kicking toward enemy defensive zones
             for (const [zoneName, tunnel] of Object.entries(room.connections)) {
                 if (zoneName.includes('player') && !zoneName.includes(`${playerId}`)) {
                     const portalPos = { x: room.x + tunnel.x, y: room.y + tunnel.y };
                     const kickAlignment = calculateKickAlignment(character, gameState.puck, portalPos);
                     
-                    // If kick would send puck to opponent zone, don't kick
-                    if (kickAlignment > 0.8 && settings.strategy > 0.6) {
-                        return false; // Smart AI avoids helping opponents
+                    // Aggressively kick toward opponent zones
+                    if (kickAlignment > 0.5) {
+                        return true; // Attack opponent zones
                     }
                 }
             }
         }
     }
     
-    // Defensive kicks
+    // Defensive kicks - more aggressive clearing
     if (isMyDefensiveZone(currentRoom, playerId)) {
         const myGoal = getMyGoal(currentRoom, playerId);
         if (myGoal) {
             const puckToMyGoal = distance(gameState.puck, myGoal);
             const threatLevel = evaluateThreatLevel(playerId);
             
-            // Kick based on threat level
-            if (threatLevel > 0.5 || puckToMyGoal < 150) {
+            // More frequent defensive clearing
+            if (threatLevel > 0.3 || puckToMyGoal < 200) {
                 return true;
             }
         }

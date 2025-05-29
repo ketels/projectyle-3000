@@ -248,7 +248,7 @@ function initMenu() {
             difficultyButtons.forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             gameState.aiDifficulty = btn.dataset.difficulty;
-            const displayNames = { easy: 'Dum', medium: 'Smart', hard: 'Genial' };
+            const displayNames = { easy: 'Dum', medium: 'Meh', hard: 'Genial' };
             document.getElementById('difficultyDisplay').textContent = displayNames[gameState.aiDifficulty];
         });
     });

@@ -12,12 +12,12 @@ export const CONFIG = {
     TUNNEL_WIDTH: 60,
     
     // Physics settings
-    PLAYER_SPEED: 6.75,  // Base player movement speed
-    MAX_PUCK_SPEED: 12,  // Maximum puck velocity
+    PLAYER_SPEED: 5.5,   // Base player movement speed
+    MAX_PUCK_SPEED: 10,  // Maximum puck velocity
     FRICTION: 0.98,      // Puck friction (lower = more friction)
     WALL_BOUNCE: 0.77,   // Wall bounce dampening
     KICK_RANGE: 50,
-    KICK_FORCE: 10.5,    // Base kick strength
+    KICK_FORCE: 8.5,     // Base kick strength
     
     // Visual settings
     TRAIL_LENGTH: 8,
