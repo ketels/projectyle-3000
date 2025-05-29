@@ -411,6 +411,18 @@
                     3: { magnet: 0, speed: 0, shield: 0, slowdown: 0 }
                 },
                 globalEffects: { slowdown: 0 }  // Affects all players
+            },
+            faceOff: {
+                active: false,
+                countdown: 0,
+                room: 'center',
+                position: { x: 0, y: 0 }
+            },
+            puckStuck: {
+                position: { x: 0, y: 0 },
+                timer: 0,
+                threshold: 5,  // Pixels movement threshold
+                timeLimit: 180 // 3 seconds at 60fps
             }
         };
         
@@ -664,6 +676,9 @@
             });
         }
         function tryKick(playerId) {
+            // No kicks during face-off
+            if (gameState.faceOff.active) return false;
+            
             // Check cooldown
             if (gameState.kickCooldowns[playerId] > 0) return false;
             
@@ -1594,13 +1609,102 @@
             return targetAlignment < alignmentThreshold;
         }
         
+        // Face-off system functions
+        function startFaceOff(room, customPosition) {
+            const targetRoom = room || gameState.puck.currentRoom || 'center';
+            const roomData = rooms[targetRoom];
+            
+            gameState.faceOff.active = true;
+            gameState.faceOff.countdown = 180; // 3 seconds
+            gameState.faceOff.room = targetRoom;
+            gameState.faceOff.position = customPosition || { x: roomData.x, y: roomData.y };
+            
+            // Place puck at face-off position
+            gameState.puck.x = gameState.faceOff.position.x;
+            gameState.puck.y = gameState.faceOff.position.y;
+            gameState.puck.vx = 0;
+            gameState.puck.vy = 0;
+            gameState.puck.currentRoom = targetRoom;
+            
+            // Position players in triangle around puck
+            positionPlayersForFaceOff();
+        }
+        
+        function positionPlayersForFaceOff() {
+            const faceOffDistance = 150; // Distance from puck
+            const room = gameState.faceOff.room;
+            
+            // Position active characters in equilateral triangle
+            for (let playerId = 1; playerId <= 3; playerId++) {
+                const character = gameState.playerCharacters[playerId][room];
+                if (character) {
+                    const angle = ((playerId - 1) * 120 - 90) * Math.PI / 180; // -90, 30, 150 degrees
+                    character.x = gameState.faceOff.position.x + Math.cos(angle) * faceOffDistance;
+                    character.y = gameState.faceOff.position.y + Math.sin(angle) * faceOffDistance;
+                    character.vx = 0;
+                    character.vy = 0;
+                    if (character.momentum) {
+                        character.momentum.x = 0;
+                        character.momentum.y = 0;
+                    }
+                    
+                    // Ensure character is within room bounds
+                    constrainCharacterToRoom(character, room);
+                }
+            }
+            
+            updateActiveCharacters();
+        }
+        
+        function updateFaceOff() {
+            if (!gameState.faceOff.active) return;
+            
+            gameState.faceOff.countdown--;
+            
+            // During countdown, prevent all movement and kicks
+            if (gameState.faceOff.countdown > 0) {
+                // Keep puck frozen
+                gameState.puck.vx = 0;
+                gameState.puck.vy = 0;
+                
+                // Keep players at their positions
+                if (gameState.faceOff.countdown % 20 === 0) { // Re-position every 20 frames
+                    positionPlayersForFaceOff();
+                }
+            } else {
+                // Face-off complete, resume normal play
+                gameState.faceOff.active = false;
+            }
+        }
+        
+        function checkPuckStuck() {
+            const currentPos = { x: gameState.puck.x, y: gameState.puck.y };
+            const lastPos = gameState.puckStuck.position;
+            const moved = distance(currentPos, lastPos);
+            
+            if (moved < gameState.puckStuck.threshold) {
+                gameState.puckStuck.timer++;
+                
+                if (gameState.puckStuck.timer >= gameState.puckStuck.timeLimit) {
+                    // Puck is stuck, start face-off in current room
+                    startFaceOff(gameState.puck.currentRoom);
+                    gameState.puckStuck.timer = 0;
+                }
+            } else {
+                // Puck moved, reset timer
+                gameState.puckStuck.timer = 0;
+                gameState.puckStuck.position = { x: currentPos.x, y: currentPos.y };
+            }
+        }
+        
         
         // Initialize game
         function init() {
+            // Reset puck
             gameState.puck.x = 0;
             gameState.puck.y = 0;
-            gameState.puck.vx = (Math.random() - 0.5) * 4;
-            gameState.puck.vy = (Math.random() - 0.5) * 4;
+            gameState.puck.vx = 0;
+            gameState.puck.vy = 0;
             gameState.puck.currentRoom = 'center';
             gameState.puck.trail = [];
             
@@ -1627,6 +1731,9 @@
             updateActiveCharacters();
             updateRoomIndicator();
             updatePuckDisplay();
+            
+            // Start with face-off in center
+            startFaceOff('center');
         }
         
         // Update which characters are active based on puck location
@@ -1773,6 +1880,9 @@
             
             gameState.gameTime++;
             
+            // Update face-off if active
+            updateFaceOff();
+            
             // Update cooldowns and effects
             updateCooldowns();
             updateBounceEffects();
@@ -1785,11 +1895,12 @@
             updatePowerUps();
             updatePowerUpDisplay();
             
-            // Move characters (human input + AI)
-            const baseSpeed = CONFIG.PLAYER_SPEED;
-            
-            // Player 1
-            if (gameState.playerTypes[1] === 'human') {
+            // Move characters (human input + AI) - skip during face-off
+            if (!gameState.faceOff.active) {
+                const baseSpeed = CONFIG.PLAYER_SPEED;
+                
+                // Player 1
+                if (gameState.playerTypes[1] === 'human') {
                 for (let roomName in gameState.playerCharacters[1]) {
                     const character = gameState.playerCharacters[1][roomName];
                     if (character.active) {
@@ -1937,10 +2048,12 @@
             } else {
                 updateAI(3);
             }
+            } // End of face-off check
             
-            // Update puck physics (skip during portal transition)
-            if (!gameState.portalTransition.active) {
+            // Update puck physics (skip during portal transition or face-off)
+            if (!gameState.portalTransition.active && !gameState.faceOff.active) {
                 updatePuck();
+                checkPuckStuck();
             }
             
             // Update camera
@@ -2373,13 +2486,7 @@
                                 updateScoreDisplay();
                                 
                                 setTimeout(() => {
-                                    gameState.puck.x = 0;
-                                    gameState.puck.y = 0;
-                                    gameState.puck.vx = (Math.random() - 0.5) * 4;
-                                    gameState.puck.vy = (Math.random() - 0.5) * 4;
-                                    gameState.puck.currentRoom = 'center';
-                                    gameState.puck.trail = [];
-                                    updateActiveCharacters();
+                                    startFaceOff('center');
                                 }, 1000);
                             }
                             
@@ -2466,6 +2573,29 @@
                 ctx.font = '48px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillText('PAUSAD', gameState.camera.x + canvas.width/2, gameState.camera.y + canvas.height/2);
+            }
+            
+            // Draw face-off countdown
+            if (gameState.faceOff.active && gameState.faceOff.countdown > 0) {
+                const seconds = Math.ceil(gameState.faceOff.countdown / 60);
+                
+                // Draw countdown circle
+                ctx.strokeStyle = '#00ffff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(gameState.puck.x, gameState.puck.y, 200, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Draw countdown number
+                ctx.fillStyle = '#00ffff';
+                ctx.font = 'bold 72px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(seconds, gameState.puck.x, gameState.puck.y - 250);
+                
+                // Draw "FACE-OFF" text
+                ctx.font = 'bold 36px Arial';
+                ctx.fillText('FACE-OFF', gameState.puck.x, gameState.puck.y - 320);
             }
             
             ctx.restore();
