@@ -6,10 +6,10 @@ export const CONFIG = {
     CORNER_RADIUS: 50,
     
     // Object sizes
-    PUCK_RADIUS: 10,
-    PADDLE_RADIUS: 25,
+    PUCK_RADIUS: 12,     // Increased from 10 to 12
+    PADDLE_RADIUS: 30,   // Increased from 25 to 30
     GOAL_SIZE: 100,
-    TUNNEL_WIDTH: 60,
+    TUNNEL_WIDTH: 72,    // Increased 20% from 60 to 72
     
     // Physics settings
     PLAYER_SPEED: 5.5,   // Base player movement speed

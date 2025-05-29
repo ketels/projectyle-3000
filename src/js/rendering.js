@@ -4,6 +4,53 @@ import { distance, adjustBrightness } from './utils.js';
 
 let renderCtx;
 
+// 3D perspective settings
+const PERSPECTIVE_CONFIG = {
+    horizon: 200,        // Y position of horizon line
+    maxScale: 1.2,       // Maximum scale for objects at bottom
+    minScale: 0.6,       // Minimum scale for objects at top
+    vanishingY: -500,    // Y position of vanishing point
+    wallHeight: 3,       // Virtual wall height (reduced to 3px)
+    wallThickness: 25,   // Wall thickness
+    cameraHeight: 300,   // Camera height above the floor
+    cameraAngle: 0.3     // Camera tilt angle (radians)
+};
+
+function getPerspectiveScale(y, canvasHeight) {
+    // Calculate perspective scale based on Y position
+    const normalizedY = (y - PERSPECTIVE_CONFIG.horizon) / canvasHeight;
+    const scale = PERSPECTIVE_CONFIG.minScale + 
+                 (PERSPECTIVE_CONFIG.maxScale - PERSPECTIVE_CONFIG.minScale) * 
+                 Math.max(0, Math.min(1, normalizedY + 0.5));
+    return scale;
+}
+
+function project3DPoint(x, y, z, cameraX, cameraY) {
+    // Project 3D point to 2D screen coordinates considering camera position
+    const relativeX = x - cameraX;
+    const relativeY = y - cameraY;
+    
+    // Simple perspective projection
+    const distance = Math.sqrt(relativeX * relativeX + relativeY * relativeY);
+    const perspective = PERSPECTIVE_CONFIG.cameraHeight / (PERSPECTIVE_CONFIG.cameraHeight - z);
+    
+    // Camera angle effect
+    const angleOffsetY = z * Math.sin(PERSPECTIVE_CONFIG.cameraAngle) * 0.5;
+    
+    return {
+        x: cameraX + relativeX * perspective,
+        y: cameraY + relativeY * perspective + angleOffsetY,
+        scale: perspective
+    };
+}
+
+function getWallTopY(baseY, cameraY) {
+    // Calculate where the top of the wall appears on screen
+    const relativeY = baseY - cameraY;
+    const wallTop = project3DPoint(0, baseY, PERSPECTIVE_CONFIG.wallHeight, 0, cameraY);
+    return wallTop.y;
+}
+
 export function initCanvas() {
     const canvas = document.getElementById('gameCanvas');
     renderCtx = canvas.getContext('2d');
@@ -32,7 +79,7 @@ export function render() {
     renderCtx.translate(-gameState.camera.x, -gameState.camera.y);
     
     drawRooms();
-    drawTunnels();
+    drawTunnels(); // Draws the swirl effects through wall openings
     drawPowerUps();
     drawPuckTrail();
     drawAllCharacters();
@@ -82,8 +129,12 @@ function drawRooms() {
         const y = room.y - room.height/2;
         const width = room.width;
         const height = room.height;
+        const wallThickness = 15; // Wall thickness for 3D effect
         
-        // Draw room with rounded corners
+        // Draw 3D walls with depth
+        draw3DWalls(x, y, width, height, cornerRadius, room);
+        
+        // Draw room floor with rounded corners
         renderCtx.beginPath();
         renderCtx.moveTo(x + cornerRadius, y);
         renderCtx.lineTo(x + width - cornerRadius, y);
@@ -96,17 +147,21 @@ function drawRooms() {
         renderCtx.quadraticCurveTo(x, y, x + cornerRadius, y);
         renderCtx.closePath();
         
-        // Fill with solid color
-        renderCtx.fillStyle = room.color + '30'; // Semi-transparent solid color
+        // Fill floor with lighter color
+        renderCtx.fillStyle = room.color + '20'; // Very transparent floor
         renderCtx.fill();
         
-        // Stroke
-        renderCtx.strokeStyle = room.type === 'frantic' ? '#ff00ff' : '#00ffff';
-        renderCtx.lineWidth = room.type === 'frantic' ? 4 : 3;
-        renderCtx.shadowColor = room.type === 'frantic' ? '#ff00ff' : '#00ffff';
-        renderCtx.shadowBlur = room.type === 'frantic' ? 15 : 10;
+        // Add inner shadow for depth
+        renderCtx.save();
+        renderCtx.clip(); // Clip to room shape
+        renderCtx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        renderCtx.shadowBlur = 10;
+        renderCtx.shadowOffsetX = 0;
+        renderCtx.shadowOffsetY = 0;
+        renderCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+        renderCtx.lineWidth = 20;
         renderCtx.stroke();
-        renderCtx.shadowBlur = 0;
+        renderCtx.restore();
         
         renderCtx.fillStyle = room.type === 'frantic' ? '#ff00ff' : '#ffffff';
         renderCtx.font = room.type === 'frantic' ? 'bold 18px Arial' : '16px Arial';
@@ -120,6 +175,278 @@ function drawRooms() {
             room.goals.forEach(goal => drawGoal(room, goal));
         }
     });
+}
+
+function draw3DWalls(x, y, width, height, cornerRadius, room) {
+    const cameraX = gameState.camera.x;
+    const cameraY = gameState.camera.y;
+    const wallColor = room.type === 'frantic' ? '#ff00ff' : '#00ffff';
+    const wallColorDark = room.type === 'frantic' ? '#cc00cc' : '#0099cc';
+    const wallColorMedium = room.type === 'frantic' ? '#dd00dd' : '#0066cc';
+    const thickness = PERSPECTIVE_CONFIG.wallThickness;
+    
+    // Get portal positions for this room to create openings
+    const portals = [];
+    if (room.connections) {
+        Object.entries(room.connections).forEach(([connectionName, tunnel]) => {
+            portals.push({
+                x: room.x + tunnel.x,
+                y: room.y + tunnel.y,
+                width: tunnel.width,
+                height: tunnel.height
+            });
+        });
+    }
+    
+    // Generate curved wall segments that follow the rounded corners
+    function generateWallPoints(centerX, centerY, w, h, radius, outset) {
+        const points = [];
+        const segmentsPerCorner = 36; // Even higher resolution for precise portal openings
+        
+        // Calculate the effective radius with outset
+        const effectiveRadius = radius + outset;
+        
+        // Define the four corner centers
+        const corners = [
+            { x: centerX - w/2 + radius, y: centerY - h/2 + radius, startAngle: Math.PI, endAngle: Math.PI * 1.5 },     // Top-left
+            { x: centerX + w/2 - radius, y: centerY - h/2 + radius, startAngle: Math.PI * 1.5, endAngle: Math.PI * 2 }, // Top-right  
+            { x: centerX + w/2 - radius, y: centerY + h/2 - radius, startAngle: 0, endAngle: Math.PI * 0.5 },           // Bottom-right
+            { x: centerX - w/2 + radius, y: centerY + h/2 - radius, startAngle: Math.PI * 0.5, endAngle: Math.PI }      // Bottom-left
+        ];
+        
+        // For each corner, generate curved points
+        corners.forEach((corner, cornerIndex) => {
+            for (let i = 0; i <= segmentsPerCorner; i++) {
+                const t = i / segmentsPerCorner;
+                const angle = corner.startAngle + (corner.endAngle - corner.startAngle) * t;
+                
+                const pointX = corner.x + effectiveRadius * Math.cos(angle);
+                const pointY = corner.y + effectiveRadius * Math.sin(angle);
+                
+                points.push([pointX, pointY]);
+            }
+            
+            // Add straight edge points between corners (except after last corner)
+            if (cornerIndex < 3) {
+                const straightSegments = 12; // Higher resolution for straight edges too
+                
+                for (let i = 1; i <= straightSegments; i++) {
+                    const t = i / (straightSegments + 1);
+                    let straightX, straightY;
+                    
+                    if (cornerIndex === 0) { // Top edge
+                        straightX = corner.x + effectiveRadius + t * (w - 2 * radius);
+                        straightY = centerY - h/2 - outset;
+                    } else if (cornerIndex === 1) { // Right edge
+                        straightX = centerX + w/2 + outset;
+                        straightY = corner.y + effectiveRadius + t * (h - 2 * radius);
+                    } else if (cornerIndex === 2) { // Bottom edge
+                        straightX = corner.x - effectiveRadius - t * (w - 2 * radius);
+                        straightY = centerY + h/2 + outset;
+                    }
+                    
+                    points.push([straightX, straightY]);
+                }
+            }
+        });
+        
+        // Add final straight edge (left edge)
+        const leftEdgeSegments = 12;
+        const leftCorner = corners[3];
+        for (let i = 1; i < leftEdgeSegments; i++) {
+            const t = i / leftEdgeSegments;
+            const straightX = centerX - w/2 - outset;
+            const straightY = leftCorner.y - effectiveRadius - t * (h - 2 * radius);
+            points.push([straightX, straightY]);
+        }
+        
+        return points;
+    }
+    
+    const outerPoints = generateWallPoints(x + width/2, y + height/2, width, height, cornerRadius, thickness);
+    const innerPoints = generateWallPoints(x + width/2, y + height/2, width, height, cornerRadius, 0);
+    
+    // Helper function to check if a wall segment intersects with any portal
+    function segmentIntersectsPortal(p1, p2) {
+        return portals.some(portal => {
+            // Use exact portal size for collision detection with small buffer
+            const buffer = 5; // Small buffer to ensure clean openings
+            const portalLeft = portal.x - portal.width/2 - buffer;
+            const portalRight = portal.x + portal.width/2 + buffer;
+            const portalTop = portal.y - portal.height/2 - buffer;
+            const portalBottom = portal.y + portal.height/2 + buffer;
+            
+            // Check multiple points along the segment for higher precision
+            const numChecks = 10; // Increased precision
+            for (let i = 0; i <= numChecks; i++) {
+                const t = i / numChecks;
+                const checkX = p1[0] + t * (p2[0] - p1[0]);
+                const checkY = p1[1] + t * (p2[1] - p1[1]);
+                
+                if (checkX >= portalLeft && checkX <= portalRight && 
+                    checkY >= portalTop && checkY <= portalBottom) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+    
+    // Draw wall segments using the curved points (skip segments that intersect portals)
+    for (let i = 0; i < outerPoints.length; i++) {
+        const nextI = (i + 1) % outerPoints.length;
+        const outerP1 = outerPoints[i];
+        const outerP2 = outerPoints[nextI];
+        const innerP1 = innerPoints[i];
+        const innerP2 = innerPoints[nextI];
+        
+        // Skip this wall segment if it intersects with a portal
+        if (segmentIntersectsPortal(outerP1, outerP2) || segmentIntersectsPortal(innerP1, innerP2)) {
+            continue;
+        }
+        
+        // Project floor points
+        const outerFloor1 = project3DPoint(outerP1[0], outerP1[1], 0, cameraX, cameraY);
+        const outerFloor2 = project3DPoint(outerP2[0], outerP2[1], 0, cameraX, cameraY);
+        const innerFloor1 = project3DPoint(innerP1[0], innerP1[1], 0, cameraX, cameraY);
+        const innerFloor2 = project3DPoint(innerP2[0], innerP2[1], 0, cameraX, cameraY);
+        
+        // Project wall top points
+        const outerTop1 = project3DPoint(outerP1[0], outerP1[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        const outerTop2 = project3DPoint(outerP2[0], outerP2[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        const innerTop1 = project3DPoint(innerP1[0], innerP1[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        const innerTop2 = project3DPoint(innerP2[0], innerP2[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        
+        // Calculate wall normal for this segment
+        const wallNormalX = -(outerP2[1] - outerP1[1]);
+        const wallNormalY = outerP2[0] - outerP1[0];
+        const cameraDirX = cameraX - (outerP1[0] + outerP2[0]) / 2;
+        const cameraDirY = cameraY - (outerP1[1] + outerP2[1]) / 2;
+        const dotProduct = wallNormalX * cameraDirX + wallNormalY * cameraDirY;
+        
+        // Draw outer wall face (if facing away from camera)
+        if (dotProduct < 0) {
+            renderCtx.beginPath();
+            renderCtx.moveTo(outerFloor1.x, outerFloor1.y);
+            renderCtx.lineTo(outerFloor2.x, outerFloor2.y);
+            renderCtx.lineTo(outerTop2.x, outerTop2.y);
+            renderCtx.lineTo(outerTop1.x, outerTop1.y);
+            renderCtx.closePath();
+            
+            renderCtx.fillStyle = wallColorDark + '90';
+            renderCtx.fill();
+            renderCtx.strokeStyle = wallColorDark;
+            renderCtx.lineWidth = 1;
+            renderCtx.stroke();
+        }
+        
+        // Calculate inner wall normal
+        const innerNormalX = -(innerP2[1] - innerP1[1]);
+        const innerNormalY = innerP2[0] - innerP1[0];
+        const innerCameraDirX = cameraX - (innerP1[0] + innerP2[0]) / 2;
+        const innerCameraDirY = cameraY - (innerP1[1] + innerP2[1]) / 2;
+        const innerDotProduct = innerNormalX * innerCameraDirX + innerNormalY * innerCameraDirY;
+        
+        // Draw inner wall face (if facing toward camera)
+        if (innerDotProduct > 0) {
+            renderCtx.beginPath();
+            renderCtx.moveTo(innerFloor1.x, innerFloor1.y);
+            renderCtx.lineTo(innerFloor2.x, innerFloor2.y);
+            renderCtx.lineTo(innerTop2.x, innerTop2.y);
+            renderCtx.lineTo(innerTop1.x, innerTop1.y);
+            renderCtx.closePath();
+            
+            const gradient = renderCtx.createLinearGradient(
+                (innerFloor1.x + innerFloor2.x) / 2, (innerFloor1.y + innerFloor2.y) / 2,
+                (innerTop1.x + innerTop2.x) / 2, (innerTop1.y + innerTop2.y) / 2
+            );
+            gradient.addColorStop(0, wallColor + '80');
+            gradient.addColorStop(1, wallColorMedium + '60');
+            
+            renderCtx.fillStyle = gradient;
+            renderCtx.fill();
+            renderCtx.strokeStyle = wallColor;
+            renderCtx.lineWidth = 1;
+            renderCtx.stroke();
+        }
+        
+        // Draw wall top surface (showing thickness)
+        renderCtx.beginPath();
+        renderCtx.moveTo(outerTop1.x, outerTop1.y);
+        renderCtx.lineTo(outerTop2.x, outerTop2.y);
+        renderCtx.lineTo(innerTop2.x, innerTop2.y);
+        renderCtx.lineTo(innerTop1.x, innerTop1.y);
+        renderCtx.closePath();
+        
+        renderCtx.fillStyle = wallColorMedium + '70';
+        renderCtx.fill();
+        renderCtx.strokeStyle = wallColor;
+        renderCtx.lineWidth = 1;
+        renderCtx.stroke();
+    }
+    
+    // Debug: visualize portal areas and skipped segments
+    const DEBUG_PORTALS = false; // Set to false to disable debug
+    if (DEBUG_PORTALS) {
+        portals.forEach(portal => {
+            const buffer = 5;
+            const debugLeft = portal.x - portal.width/2 - buffer;
+            const debugRight = portal.x + portal.width/2 + buffer;
+            const debugTop = portal.y - portal.height/2 - buffer;
+            const debugBottom = portal.y + portal.height/2 + buffer;
+            
+            // Draw portal area outline
+            renderCtx.strokeStyle = '#ff0000';
+            renderCtx.lineWidth = 2;
+            renderCtx.strokeRect(debugLeft, debugTop, debugRight - debugLeft, debugBottom - debugTop);
+            
+            // Draw actual portal size
+            renderCtx.strokeStyle = '#00ff00';
+            renderCtx.lineWidth = 1;
+            renderCtx.strokeRect(portal.x - portal.width/2, portal.y - portal.height/2, portal.width, portal.height);
+        });
+        
+        // Show skipped wall segments
+        for (let i = 0; i < outerPoints.length; i++) {
+            const nextI = (i + 1) % outerPoints.length;
+            const outerP1 = outerPoints[i];
+            const outerP2 = outerPoints[nextI];
+            
+            if (segmentIntersectsPortal(outerP1, outerP2)) {
+                renderCtx.strokeStyle = '#ffff00';
+                renderCtx.lineWidth = 3;
+                renderCtx.beginPath();
+                renderCtx.moveTo(outerP1[0], outerP1[1]);
+                renderCtx.lineTo(outerP2[0], outerP2[1]);
+                renderCtx.stroke();
+            }
+        }
+    }
+    
+    // Draw floor/playing surface (inner area)
+    renderCtx.beginPath();
+    renderCtx.moveTo(x + cornerRadius, y);
+    renderCtx.lineTo(x + width - cornerRadius, y);
+    renderCtx.quadraticCurveTo(x + width, y, x + width, y + cornerRadius);
+    renderCtx.lineTo(x + width, y + height - cornerRadius);
+    renderCtx.quadraticCurveTo(x + width, y + height, x + width - cornerRadius, y + height);
+    renderCtx.lineTo(x + cornerRadius, y + height);
+    renderCtx.quadraticCurveTo(x, y + height, x, y + height - cornerRadius);
+    renderCtx.lineTo(x, y + cornerRadius);
+    renderCtx.quadraticCurveTo(x, y, x + cornerRadius, y);
+    renderCtx.closePath();
+    
+    // Floor surface
+    renderCtx.fillStyle = room.color + '15';
+    renderCtx.fill();
+    
+    // Outer glow for floor edge
+    renderCtx.strokeStyle = wallColor;
+    renderCtx.lineWidth = room.type === 'frantic' ? 2 : 1;
+    renderCtx.shadowColor = wallColor;
+    renderCtx.shadowBlur = room.type === 'frantic' ? 8 : 5;
+    renderCtx.stroke();
+    renderCtx.shadowBlur = 0;
 }
 
 function drawGoal(room, goal) {
@@ -186,50 +513,81 @@ function drawTunnels() {
             const tunnelX = tunnelCenterX - tunnel.width/2;
             const tunnelY = tunnelCenterY - tunnel.height/2;
             
-            // Portal glow effect
-            const glowSize = 40 + Math.sin(gameState.gameTime * 0.05) * 10;
-            const gradient = renderCtx.createRadialGradient(tunnelCenterX, tunnelCenterY, 0, tunnelCenterX, tunnelCenterY, glowSize);
-            gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
-            gradient.addColorStop(0.5, 'rgba(0, 128, 255, 0.4)');
-            gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
-            
-            renderCtx.fillStyle = gradient;
-            renderCtx.fillRect(tunnelCenterX - glowSize, tunnelCenterY - glowSize, glowSize * 2, glowSize * 2);
-            
-            // Portal core
-            renderCtx.fillStyle = '#001133';
-            renderCtx.fillRect(tunnelX, tunnelY, tunnel.width, tunnel.height);
-            
-            // Portal swirl effect
-            renderCtx.save();
-            renderCtx.translate(tunnelCenterX, tunnelCenterY);
-            renderCtx.rotate(gameState.gameTime * 0.04);
-            
-            // Inner spiral
-            renderCtx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
-            renderCtx.lineWidth = 2;
-            renderCtx.beginPath();
-            for (let i = 0; i < 20; i++) {
-                const angle = i * 0.3;
-                const radius = i * 1.5;
-                const x = Math.cos(angle) * radius;
-                const y = Math.sin(angle) * radius;
-                if (i === 0) renderCtx.moveTo(x, y);
-                else renderCtx.lineTo(x, y);
-            }
-            renderCtx.stroke();
-            
-            renderCtx.restore();
-            
-            // Portal border
-            renderCtx.strokeStyle = '#00ffff';
-            renderCtx.lineWidth = 3;
-            renderCtx.shadowColor = '#00ffff';
-            renderCtx.shadowBlur = 15;
-            renderCtx.strokeRect(tunnelX, tunnelY, tunnel.width, tunnel.height);
-            renderCtx.shadowBlur = 0;
+            draw3DPortal(tunnelCenterX, tunnelCenterY, tunnel.width, tunnel.height);
         });
     });
+}
+
+function draw3DPortal(centerX, centerY, width, height) {
+    // Just draw the swirl effect - the wall opening is handled in wall rendering
+    drawPortalSwirl(centerX, centerY, width, height);
+}
+
+function drawPortalSwirl(centerX, centerY, width, height) {
+    // Deep space background
+    renderCtx.save();
+    const depthGradient = renderCtx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, Math.max(width, height) * 0.8
+    );
+    depthGradient.addColorStop(0, 'rgba(0, 30, 60, 0.9)');      // Deep blue center
+    depthGradient.addColorStop(0.6, 'rgba(0, 15, 40, 0.7)');    // Darker
+    depthGradient.addColorStop(1, 'rgba(0, 5, 20, 0.5)');       // Very dark edges
+    
+    renderCtx.fillStyle = depthGradient;
+    renderCtx.fillRect(centerX - width, centerY - height, width * 2, height * 2);
+    
+    // Enhanced 3D swirl effect
+    renderCtx.translate(centerX, centerY);
+    
+    // Multiple layered spirals for depth
+    const spiralLayers = [
+        { rotation: gameState.gameTime * 0.04, scale: 1.2, alpha: 0.8, color: 'rgba(0, 255, 255, ' },
+        { rotation: gameState.gameTime * -0.03, scale: 0.8, alpha: 0.6, color: 'rgba(0, 200, 255, ' },
+        { rotation: gameState.gameTime * 0.05, scale: 0.5, alpha: 0.9, color: 'rgba(100, 255, 255, ' }
+    ];
+    
+    spiralLayers.forEach(layer => {
+        renderCtx.save();
+        renderCtx.rotate(layer.rotation);
+        renderCtx.scale(layer.scale, layer.scale);
+        
+        // Animated spiral
+        renderCtx.strokeStyle = layer.color + layer.alpha + ')';
+        renderCtx.lineWidth = 2;
+        renderCtx.beginPath();
+        
+        for (let i = 0; i < 30; i++) {
+            const angle = i * 0.4;
+            const radius = i * 2.5;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            
+            if (i === 0) {
+                renderCtx.moveTo(x, y);
+            } else {
+                renderCtx.lineTo(x, y);
+            }
+        }
+        renderCtx.stroke();
+        
+        // Add spinning particles
+        for (let i = 0; i < 10; i++) {
+            const particleAngle = (gameState.gameTime * 0.02 + i * Math.PI * 2 / 10) * (layer.scale > 0.7 ? 1 : -1);
+            const particleRadius = 20 + Math.sin(gameState.gameTime * 0.03 + i) * 8;
+            const px = Math.cos(particleAngle) * particleRadius * layer.scale;
+            const py = Math.sin(particleAngle) * particleRadius * layer.scale;
+            
+            renderCtx.beginPath();
+            renderCtx.arc(px, py, 2 * layer.scale, 0, Math.PI * 2);
+            renderCtx.fillStyle = layer.color + (layer.alpha * 0.9) + ')';
+            renderCtx.fill();
+        }
+        
+        renderCtx.restore();
+    });
+    
+    renderCtx.restore();
 }
 
 function drawPowerUps() {
@@ -305,6 +663,9 @@ function drawCharacter(character, playerId, color, isActive) {
     const isAI = gameState.playerTypes[playerId] === 'ai';
     const isKicking = character.kickEffect > 0;
     
+    // No perspective scaling for players - they should be consistent size
+    const perspectiveScale = 1.0;
+    
     // Calculate tilt based on velocity
     const vx = character.vx || 0;
     const vy = character.vy || 0;
@@ -313,19 +674,26 @@ function drawCharacter(character, playerId, color, isActive) {
     const tiltX = (vx / CONFIG.PLAYER_SPEED) * maxTilt;
     const tiltY = (vy / CONFIG.PLAYER_SPEED) * maxTilt;
     
-    // Dynamic shadow based on movement direction
+    // Dynamic shadow based on movement direction and 3D height
     renderCtx.save();
-    renderCtx.globalAlpha = alpha * 0.6; // More opaque shadow
-    renderCtx.fillStyle = 'rgba(0, 0, 0, 0.8)'; // Darker shadow
     
-    // Shadow moves opposite to movement direction (tilt effect)
-    const baseShadowOffset = 8;
-    const shadowOffsetX = baseShadowOffset - tiltX * 20; // Shadow opposite to tilt
-    const shadowOffsetY = baseShadowOffset - tiltY * 20;
+    // Get character height (default 8px if not set)
+    const characterHeight = character.z || 8;
+    const heightFactor = characterHeight / 10; // Normalize to 0.8 for default height
     
-    // Shadow stretches more when moving faster
-    const shadowScaleX = 1.1 + Math.abs(tiltY) * 0.2; // Stretch perpendicular to movement
-    const shadowScaleY = 1.1 + Math.abs(tiltX) * 0.2;
+    // Shadow opacity and size based on height
+    renderCtx.globalAlpha = alpha * (0.4 + heightFactor * 0.3); // Higher = more opaque shadow
+    renderCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    
+    // Shadow offset based on height (higher objects cast longer shadows)
+    const baseShadowOffset = (6 + heightFactor * 4) * perspectiveScale;
+    const shadowOffsetX = baseShadowOffset - tiltX * 20 * perspectiveScale;
+    const shadowOffsetY = baseShadowOffset - tiltY * 20 * perspectiveScale;
+    
+    // Shadow size based on height (higher = larger shadow)
+    const heightShadowScale = 0.8 + heightFactor * 0.4;
+    const shadowScaleX = (1.1 + Math.abs(tiltY) * 0.2) * perspectiveScale * heightShadowScale;
+    const shadowScaleY = (1.1 + Math.abs(tiltX) * 0.2) * perspectiveScale * heightShadowScale;
     
     renderCtx.translate(character.x + shadowOffsetX, character.y + shadowOffsetY);
     renderCtx.scale(shadowScaleX, shadowScaleY);
@@ -355,19 +723,26 @@ function drawCharacter(character, playerId, color, isActive) {
     
     renderCtx.globalAlpha = alpha;
     
-    // Enhanced visuals when kicking
-    const paddleRadius = isKicking ? CONFIG.PADDLE_RADIUS + 5 : CONFIG.PADDLE_RADIUS;
+    // Enhanced visuals when kicking with perspective scaling
+    const basePaddleRadius = isKicking ? CONFIG.PADDLE_RADIUS + 5 : CONFIG.PADDLE_RADIUS;
+    const paddleRadius = basePaddleRadius * perspectiveScale;
     
     // Calculate subtle squash effect based on movement (speed already calculated above)
     const squashAmount = Math.min(speed / 20, 0.15); // Max 15% squash, more subtle
     
     renderCtx.fillStyle = color;
     renderCtx.strokeStyle = color;
-    renderCtx.lineWidth = isActive ? 4 : 2;
+    renderCtx.lineWidth = (isActive ? 4 : 2) * perspectiveScale;
     // Removed glow effect (shadowBlur) for cleaner look
     
     renderCtx.save();
-    renderCtx.translate(character.x, character.y);
+    
+    // Apply 3D height offset
+    const playerHeightOffset = characterHeight * 0.3; // Visual height offset for players
+    renderCtx.translate(character.x, character.y - playerHeightOffset);
+    
+    // Apply perspective scaling first
+    renderCtx.scale(perspectiveScale, perspectiveScale);
     
     // Apply tilt and squash effect based on movement
     if (speed > 0.1) {
@@ -385,9 +760,9 @@ function drawCharacter(character, playerId, color, isActive) {
         renderCtx.rotate(angle * 0.1);
     }
     
-    // Draw the main character shape
+    // Draw the main character shape (using base radius since we already scaled)
     renderCtx.beginPath();
-    renderCtx.arc(0, 0, paddleRadius, 0, Math.PI * 2);
+    renderCtx.arc(0, 0, basePaddleRadius, 0, Math.PI * 2);
     
     // Gradient fill for 3D effect
     const gradient = renderCtx.createRadialGradient(-paddleRadius * 0.3 * tiltX, -paddleRadius * 0.3 * tiltY, 0, 0, 0, paddleRadius);
@@ -522,6 +897,9 @@ function drawPuck() {
     // Force reset all context state to ensure puck is visible
     renderCtx.save();
     
+    // Get perspective scale for puck
+    const perspectiveScale = getPerspectiveScale(gameState.puck.y, renderCtx.canvas.height);
+    
     // Special effect during portal transition
     if (gameState.portalTransition.active) {
         const elapsed = Date.now() - gameState.portalTransition.startTime;
@@ -530,8 +908,9 @@ function drawPuck() {
         // Fade out/in effect
         renderCtx.globalAlpha = progress < 0.5 ? 1 - (progress * 2) : (progress - 0.5) * 2;
         
-        // Portal energy effect around puck
-        const energyRadius = 30 + Math.sin(elapsed * 0.01) * 10;
+        // Portal energy effect around puck (scaled with perspective)
+        const baseEnergyRadius = 30 + Math.sin(elapsed * 0.01) * 10;
+        const energyRadius = baseEnergyRadius * perspectiveScale;
         const gradient = renderCtx.createRadialGradient(gameState.puck.x, gameState.puck.y, 0, gameState.puck.x, gameState.puck.y, energyRadius);
         gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
         gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)');
@@ -545,23 +924,35 @@ function drawPuck() {
     renderCtx.shadowColor = 'transparent';
     renderCtx.shadowBlur = 0;
     
-    // Puck shadow
-    renderCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    // Puck shadow based on 3D height
+    const puckHeight = gameState.puck.z || 0;
+    const heightFactor = Math.max(0, puckHeight / 20); // Normalize height
+    
+    // Shadow gets larger and more offset when puck is higher
+    const baseShadowOffset = (2 + heightFactor * 8) * perspectiveScale;
+    const shadowRadius = CONFIG.PUCK_RADIUS * perspectiveScale * (1 + heightFactor * 0.5);
+    const shadowOpacity = Math.max(0.2, 0.6 - heightFactor * 0.3); // Fade shadow when very high
+    
+    renderCtx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`;
     renderCtx.beginPath();
-    renderCtx.arc(gameState.puck.x + 2, gameState.puck.y + 2, CONFIG.PUCK_RADIUS, 0, Math.PI * 2);
+    renderCtx.arc(gameState.puck.x + baseShadowOffset, gameState.puck.y + baseShadowOffset, shadowRadius, 0, Math.PI * 2);
     renderCtx.fill();
     
-    // Main puck with rotation
+    // Main puck with rotation, perspective scaling, and 3D positioning
     const rotation = gameState.gameTime * 0.1;
-    renderCtx.translate(gameState.puck.x, gameState.puck.y);
+    
+    // Offset puck position based on height (pseudo-3D effect)
+    const heightOffset = puckHeight * 0.5; // Visual height offset
+    renderCtx.translate(gameState.puck.x, gameState.puck.y - heightOffset);
+    renderCtx.scale(perspectiveScale, perspectiveScale);
     renderCtx.rotate(rotation);
     
-    // Puck body - VERY bright and visible
+    // Puck body - VERY bright and visible (using base radius since we already scaled)
     renderCtx.fillStyle = '#ffffff';
     renderCtx.strokeStyle = '#00ffff';
     renderCtx.lineWidth = 4;
     
-    // Strong glow effect
+    // Strong glow effect (scaled appropriately)
     renderCtx.shadowColor = '#ffffff';
     renderCtx.shadowBlur = 15;
     
