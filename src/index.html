@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projectyle Remake - AI Edition</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1600" height="1200"></canvas>
+        
+        <div id="startMenu">
+            <h1>🎮 PROJECTYLE</h1>
+            
+            <div class="menu-section">
+                <h3>Antal Mänskliga Spelare</h3>
+                <div class="menu-buttons">
+                    <button class="menu-button selected" data-humans="1">1 Spelare</button>
+                    <button class="menu-button" data-humans="2">2 Spelare</button>
+                    <button class="menu-button" data-humans="3">3 Spelare</button>
+                </div>
+            </div>
+            
+            <div class="menu-section">
+                <h3>AI Intelligens</h3>
+                <div class="menu-buttons">
+                    <button class="menu-button" data-difficulty="easy">Dum (följer bara bollen)</button>
+                    <button class="menu-button selected" data-difficulty="medium">Smart (grundstrategi)</button>
+                    <button class="menu-button" data-difficulty="hard">Professionell (avancerad)</button>
+                </div>
+            </div>
+            
+            <button id="startButton" class="menu-button">STARTA SPEL</button>
+            
+            <div class="menu-section" style="margin-top: 40px;">
+                <h3>Kontroller</h3>
+                <div style="text-align: left; max-width: 600px; margin: 0 auto; font-size: 14px; color: #00ffff;">
+                    <div style="margin: 10px 0;">
+                        <span style="color: #ff0080;">🔴 Spelare 1:</span> Piltangenter för rörelse + Mellanslag för spark
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <span style="color: #80ff00;">🟢 Spelare 2:</span> WASD för rörelse + Vänster Shift för spark
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <span style="color: #ff8000;">🟠 Spelare 3:</span> IJKL för rörelse + H för spark
+                    </div>
+                    <div style="margin-top: 20px; color: #ffff00;">
+                        ⚡ <strong>Tips:</strong> Stå nära bollen och sparka för extra kraft!<br>
+                        🎯 <strong>Mål:</strong> Göra mål i motståndarnas mål!<br>
+                        🌀 <strong>Portaler:</strong> Använd portalerna för att förflytta dig mellan rum!
+                    </div>
+                    <div style="margin-top: 20px; opacity: 0.7;">
+                        R = Starta om | ESC = Paus | M = Tillbaka till meny
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="ui">
+            <div class="score player1">
+                🔴 Spelare 1: <span id="score1">0</span> <span id="ai1" class="ai-indicator"></span> <span id="powerup1" class="powerup-display"></span>
+            </div>
+            <div class="score player2">
+                🟢 Spelare 2: <span id="score2">0</span> <span id="ai2" class="ai-indicator"></span> <span id="powerup2" class="powerup-display"></span>
+            </div>
+            <div class="score player3">
+                🟠 Spelare 3: <span id="score3">0</span> <span id="ai3" class="ai-indicator"></span> <span id="powerup3" class="powerup-display"></span>
+            </div>
+        </div>
+        
+        <div class="room-indicator" id="roomIndicator">Rum: CENTER</div>
+        <div class="active-player" id="activePlayerDisplay" style="display: none;">Du är: Spelare 1</div>
+        
+        <div id="controls">
+            <strong>🎮 PROJECTYLE</strong> | 
+            AI: <span id="difficultyDisplay">Smart</span> | 
+            Puck: <span id="puckPosition">0,0</span> | 
+            <span id="currentRoom">Center</span> | 
+            <span id="activePlayers">Center</span> | 
+            <em style="opacity: 0.7;">R = Restart | ESC = Paus | M = Meny</em>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
