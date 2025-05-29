@@ -1,0 +1,20 @@
+{
+  "name": "projectyle-3000",
+  "version": "1.0.0",
+  "description": "A browser-based multiplayer game remake",
+  "main": "dist/index.html",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node scripts/test.js",
+    "serve": "python3 -m http.server 8000 || python -m SimpleHTTPServer 8000",
+    "dev": "npm run serve",
+    "prebuild": "npm test"
+  },
+  "keywords": ["game", "canvas", "multiplayer"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
