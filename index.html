@@ -2501,232 +2501,95 @@ function draw3DWalls(x, y, width, height, cornerRadius, room) {
         });
     }
     
-    // Generate curved wall segments that follow the rounded corners
-    function generateWallPoints(centerX, centerY, w, h, radius, outset) {
-        const points = [];
-        const segmentsPerCorner = 36; // Even higher resolution for precise portal openings
-        
-        // Calculate the effective radius with outset
-        const effectiveRadius = radius + outset;
-        
-        // Define the four corner centers
-        const corners = [
-            { x: centerX - w/2 + radius, y: centerY - h/2 + radius, startAngle: Math.PI, endAngle: Math.PI * 1.5 },     // Top-left
-            { x: centerX + w/2 - radius, y: centerY - h/2 + radius, startAngle: Math.PI * 1.5, endAngle: Math.PI * 2 }, // Top-right  
-            { x: centerX + w/2 - radius, y: centerY + h/2 - radius, startAngle: 0, endAngle: Math.PI * 0.5 },           // Bottom-right
-            { x: centerX - w/2 + radius, y: centerY + h/2 - radius, startAngle: Math.PI * 0.5, endAngle: Math.PI }      // Bottom-left
-        ];
-        
-        // For each corner, generate curved points
-        corners.forEach((corner, cornerIndex) => {
-            for (let i = 0; i <= segmentsPerCorner; i++) {
-                const t = i / segmentsPerCorner;
-                const angle = corner.startAngle + (corner.endAngle - corner.startAngle) * t;
-                
-                const pointX = corner.x + effectiveRadius * Math.cos(angle);
-                const pointY = corner.y + effectiveRadius * Math.sin(angle);
-                
-                points.push([pointX, pointY]);
-            }
-            
-            // Add straight edge points between corners (except after last corner)
-            if (cornerIndex < 3) {
-                const straightSegments = 36; // Much higher resolution for straight edges
-                
-                for (let i = 1; i <= straightSegments; i++) {
-                    const t = i / (straightSegments + 1);
-                    let straightX, straightY;
-                    
-                    if (cornerIndex === 0) { // Top edge
-                        straightX = corner.x + effectiveRadius + t * (w - 2 * radius);
-                        straightY = centerY - h/2 - outset;
-                    } else if (cornerIndex === 1) { // Right edge
-                        straightX = centerX + w/2 + outset;
-                        straightY = corner.y + effectiveRadius + t * (h - 2 * radius);
-                    } else if (cornerIndex === 2) { // Bottom edge
-                        straightX = corner.x - effectiveRadius - t * (w - 2 * radius);
-                        straightY = centerY + h/2 + outset;
-                    }
-                    
-                    points.push([straightX, straightY]);
-                }
-            }
-        });
-        
-        // Add final straight edge (left edge)
-        const leftEdgeSegments = 36;
-        const leftCorner = corners[3];
-        for (let i = 1; i < leftEdgeSegments; i++) {
-            const t = i / leftEdgeSegments;
-            const straightX = centerX - w/2 - outset;
-            const straightY = leftCorner.y - effectiveRadius - t * (h - 2 * radius);
-            points.push([straightX, straightY]);
-        }
-        
-        return points;
-    }
+    // Calculate room bounds
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    const halfWidth = width/2;
+    const halfHeight = height/2;
     
-    const outerPoints = generateWallPoints(x + width/2, y + height/2, width, height, cornerRadius, thickness);
-    const innerPoints = generateWallPoints(x + width/2, y + height/2, width, height, cornerRadius, 0);
+    // Define the wall edges
+    const edges = [
+        { name: 'top', startX: centerX - halfWidth + cornerRadius, startY: centerY - halfHeight, endX: centerX + halfWidth - cornerRadius, endY: centerY - halfHeight },
+        { name: 'right', startX: centerX + halfWidth, startY: centerY - halfHeight + cornerRadius, endX: centerX + halfWidth, endY: centerY + halfHeight - cornerRadius },
+        { name: 'bottom', startX: centerX + halfWidth - cornerRadius, startY: centerY + halfHeight, endX: centerX - halfWidth + cornerRadius, endY: centerY + halfHeight },
+        { name: 'left', startX: centerX - halfWidth, startY: centerY + halfHeight - cornerRadius, endX: centerX - halfWidth, endY: centerY - halfHeight + cornerRadius }
+    ];
     
-    // Helper function to check if a wall segment intersects with any portal
-    function segmentIntersectsPortal(p1, p2) {
-        return portals.some(portal => {
-            const buffer = 5;
-            const portalLeft = portal.x - portal.width/2 - buffer;
-            const portalRight = portal.x + portal.width/2 + buffer;
-            const portalTop = portal.y - portal.height/2 - buffer;
-            const portalBottom = portal.y + portal.height/2 + buffer;
-            
-            // Check if either endpoint is inside the portal
-            const p1Inside = p1[0] >= portalLeft && p1[0] <= portalRight && 
-                           p1[1] >= portalTop && p1[1] <= portalBottom;
-            const p2Inside = p2[0] >= portalLeft && p2[0] <= portalRight && 
-                           p2[1] >= portalTop && p2[1] <= portalBottom;
-            
-            if (p1Inside || p2Inside) return true;
-            
-            // Check if segment crosses portal boundaries
-            const segMinX = Math.min(p1[0], p2[0]);
-            const segMaxX = Math.max(p1[0], p2[0]);
-            const segMinY = Math.min(p1[1], p2[1]);
-            const segMaxY = Math.max(p1[1], p2[1]);
-            
-            // Check if bounding boxes overlap
-            return segMaxX >= portalLeft && segMinX <= portalRight &&
-                   segMaxY >= portalTop && segMinY <= portalBottom;
-        });
-    }
+    // Define the corners
+    const corners = [
+        { x: centerX - halfWidth + cornerRadius, y: centerY - halfHeight + cornerRadius, startAngle: Math.PI, endAngle: Math.PI * 1.5 },     // Top-left
+        { x: centerX + halfWidth - cornerRadius, y: centerY - halfHeight + cornerRadius, startAngle: Math.PI * 1.5, endAngle: Math.PI * 2 }, // Top-right  
+        { x: centerX + halfWidth - cornerRadius, y: centerY + halfHeight - cornerRadius, startAngle: 0, endAngle: Math.PI * 0.5 },           // Bottom-right
+        { x: centerX - halfWidth - cornerRadius, y: centerY + halfHeight - cornerRadius, startAngle: Math.PI * 0.5, endAngle: Math.PI }      // Bottom-left
+    ];
     
-    // Helper function to clip a line segment against portal boundaries
-    function clipSegmentToPortals(p1, p2) {
-        let clippedP1 = [...p1];
-        let clippedP2 = [...p2];
-        let fullyClipped = false;
+    // Helper function to get portal cuts on a specific edge
+    function getPortalCutsOnEdge(edge) {
+        const cuts = [];
+        const buffer = 5;
         
         for (const portal of portals) {
-            const buffer = 5;
             const portalLeft = portal.x - portal.width/2 - buffer;
             const portalRight = portal.x + portal.width/2 + buffer;
             const portalTop = portal.y - portal.height/2 - buffer;
             const portalBottom = portal.y + portal.height/2 + buffer;
             
-            // Check if segment intersects portal
-            const dx = clippedP2[0] - clippedP1[0];
-            const dy = clippedP2[1] - clippedP1[1];
+            let cutStart = null;
+            let cutEnd = null;
             
-            // Find intersections with portal boundaries
-            const intersections = [];
-            
-            // Check intersection with left edge
-            if (dx !== 0) {
-                const t = (portalLeft - clippedP1[0]) / dx;
-                if (t >= 0 && t <= 1) {
-                    const y = clippedP1[1] + t * dy;
-                    if (y >= portalTop && y <= portalBottom) {
-                        intersections.push({ t, x: portalLeft, y, edge: 'left' });
-                    }
+            if (edge.name === 'top' && Math.abs(portal.y - edge.startY) < thickness + 10) {
+                // Portal is on top edge
+                if (portalLeft >= edge.startX && portalRight <= edge.endX) {
+                    cutStart = portalLeft;
+                    cutEnd = portalRight;
+                }
+            } else if (edge.name === 'bottom' && Math.abs(portal.y - edge.startY) < thickness + 10) {
+                // Portal is on bottom edge
+                if (portalRight >= edge.endX && portalLeft <= edge.startX) {
+                    cutStart = portalRight;
+                    cutEnd = portalLeft;
+                }
+            } else if (edge.name === 'right' && Math.abs(portal.x - edge.startX) < thickness + 10) {
+                // Portal is on right edge
+                if (portalTop >= edge.startY && portalBottom <= edge.endY) {
+                    cutStart = portalTop;
+                    cutEnd = portalBottom;
+                }
+            } else if (edge.name === 'left' && Math.abs(portal.x - edge.startX) < thickness + 10) {
+                // Portal is on left edge
+                if (portalBottom >= edge.endY && portalTop <= edge.startY) {
+                    cutStart = portalBottom;
+                    cutEnd = portalTop;
                 }
             }
             
-            // Check intersection with right edge
-            if (dx !== 0) {
-                const t = (portalRight - clippedP1[0]) / dx;
-                if (t >= 0 && t <= 1) {
-                    const y = clippedP1[1] + t * dy;
-                    if (y >= portalTop && y <= portalBottom) {
-                        intersections.push({ t, x: portalRight, y, edge: 'right' });
-                    }
-                }
-            }
-            
-            // Check intersection with top edge
-            if (dy !== 0) {
-                const t = (portalTop - clippedP1[1]) / dy;
-                if (t >= 0 && t <= 1) {
-                    const x = clippedP1[0] + t * dx;
-                    if (x >= portalLeft && x <= portalRight) {
-                        intersections.push({ t, x, y: portalTop, edge: 'top' });
-                    }
-                }
-            }
-            
-            // Check intersection with bottom edge
-            if (dy !== 0) {
-                const t = (portalBottom - clippedP1[1]) / dy;
-                if (t >= 0 && t <= 1) {
-                    const x = clippedP1[0] + t * dx;
-                    if (x >= portalLeft && x <= portalRight) {
-                        intersections.push({ t, x, y: portalBottom, edge: 'bottom' });
-                    }
-                }
-            }
-            
-            // Check if segment is entirely inside portal
-            const p1Inside = clippedP1[0] >= portalLeft && clippedP1[0] <= portalRight && 
-                           clippedP1[1] >= portalTop && clippedP1[1] <= portalBottom;
-            const p2Inside = clippedP2[0] >= portalLeft && clippedP2[0] <= portalRight && 
-                           clippedP2[1] >= portalTop && clippedP2[1] <= portalBottom;
-            
-            if (p1Inside && p2Inside) {
-                fullyClipped = true;
-                break;
-            }
-            
-            // Clip the segment
-            if (intersections.length > 0) {
-                intersections.sort((a, b) => a.t - b.t);
-                
-                if (p1Inside && !p2Inside) {
-                    // P1 is inside, P2 is outside - clip P1 to exit point
-                    const exitIntersection = intersections[intersections.length - 1];
-                    clippedP1 = [exitIntersection.x, exitIntersection.y];
-                } else if (!p1Inside && p2Inside) {
-                    // P1 is outside, P2 is inside - clip P2 to entry point
-                    const entryIntersection = intersections[0];
-                    clippedP2 = [entryIntersection.x, entryIntersection.y];
-                } else if (!p1Inside && !p2Inside && intersections.length >= 2) {
-                    // Segment passes through portal completely
-                    // We need to split this into two segments, but for now just skip it
-                    fullyClipped = true;
-                    break;
-                }
+            if (cutStart !== null && cutEnd !== null) {
+                cuts.push({ start: cutStart, end: cutEnd });
             }
         }
         
-        return { p1: clippedP1, p2: clippedP2, fullyClipped };
+        return cuts;
     }
     
-    // Draw wall segments using the curved points (skip segments that cross portals)
-    for (let i = 0; i < outerPoints.length; i++) {
-        const nextI = (i + 1) % outerPoints.length;
-        const outerP1 = outerPoints[i];
-        const outerP2 = outerPoints[nextI];
-        const innerP1 = innerPoints[i];
-        const innerP2 = innerPoints[nextI];
-        
-        // Skip if segment intersects a portal
-        if (segmentIntersectsPortal(outerP1, outerP2) || segmentIntersectsPortal(innerP1, innerP2)) {
-            continue;
-        }
-        
+    // Helper function to draw a wall segment
+    function drawWallSegment(p1Outer, p2Outer, p1Inner, p2Inner) {
         // Project floor points
-        const outerFloor1 = project3DPoint(outerP1[0], outerP1[1], 0, cameraX, cameraY);
-        const outerFloor2 = project3DPoint(outerP2[0], outerP2[1], 0, cameraX, cameraY);
-        const innerFloor1 = project3DPoint(innerP1[0], innerP1[1], 0, cameraX, cameraY);
-        const innerFloor2 = project3DPoint(innerP2[0], innerP2[1], 0, cameraX, cameraY);
+        const outerFloor1 = project3DPoint(p1Outer[0], p1Outer[1], 0, cameraX, cameraY);
+        const outerFloor2 = project3DPoint(p2Outer[0], p2Outer[1], 0, cameraX, cameraY);
+        const innerFloor1 = project3DPoint(p1Inner[0], p1Inner[1], 0, cameraX, cameraY);
+        const innerFloor2 = project3DPoint(p2Inner[0], p2Inner[1], 0, cameraX, cameraY);
         
         // Project wall top points
-        const outerTop1 = project3DPoint(outerP1[0], outerP1[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
-        const outerTop2 = project3DPoint(outerP2[0], outerP2[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
-        const innerTop1 = project3DPoint(innerP1[0], innerP1[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
-        const innerTop2 = project3DPoint(innerP2[0], innerP2[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        const outerTop1 = project3DPoint(p1Outer[0], p1Outer[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        const outerTop2 = project3DPoint(p2Outer[0], p2Outer[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        const innerTop1 = project3DPoint(p1Inner[0], p1Inner[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
+        const innerTop2 = project3DPoint(p2Inner[0], p2Inner[1], PERSPECTIVE_CONFIG.wallHeight, cameraX, cameraY);
         
-        // Calculate wall normal for this segment
-        const wallNormalX = -(outerP2[1] - outerP1[1]);
-        const wallNormalY = outerP2[0] - outerP1[0];
-        const cameraDirX = cameraX - (outerP1[0] + outerP2[0]) / 2;
-        const cameraDirY = cameraY - (outerP1[1] + outerP2[1]) / 2;
+        // Calculate wall normal for outer face
+        const wallNormalX = -(p2Outer[1] - p1Outer[1]);
+        const wallNormalY = p2Outer[0] - p1Outer[0];
+        const cameraDirX = cameraX - (p1Outer[0] + p2Outer[0]) / 2;
+        const cameraDirY = cameraY - (p1Outer[1] + p2Outer[1]) / 2;
         const dotProduct = wallNormalX * cameraDirX + wallNormalY * cameraDirY;
         
         // Draw outer wall face (if facing away from camera)
@@ -2746,10 +2609,10 @@ function draw3DWalls(x, y, width, height, cornerRadius, room) {
         }
         
         // Calculate inner wall normal
-        const innerNormalX = -(innerP2[1] - innerP1[1]);
-        const innerNormalY = innerP2[0] - innerP1[0];
-        const innerCameraDirX = cameraX - (innerP1[0] + innerP2[0]) / 2;
-        const innerCameraDirY = cameraY - (innerP1[1] + innerP2[1]) / 2;
+        const innerNormalX = -(p2Inner[1] - p1Inner[1]);
+        const innerNormalY = p2Inner[0] - p1Inner[0];
+        const innerCameraDirX = cameraX - (p1Inner[0] + p2Inner[0]) / 2;
+        const innerCameraDirY = cameraY - (p1Inner[1] + p2Inner[1]) / 2;
         const innerDotProduct = innerNormalX * innerCameraDirX + innerNormalY * innerCameraDirY;
         
         // Draw inner wall face (if facing toward camera)
@@ -2790,43 +2653,145 @@ function draw3DWalls(x, y, width, height, cornerRadius, room) {
         renderCtx.stroke();
     }
     
-    // Debug: visualize portal areas and skipped segments
-    const DEBUG_PORTALS = false; // Set to false to disable debug
-    if (DEBUG_PORTALS) {
-        portals.forEach(portal => {
-            const buffer = 5;
-            const debugLeft = portal.x - portal.width/2 - buffer;
-            const debugRight = portal.x + portal.width/2 + buffer;
-            const debugTop = portal.y - portal.height/2 - buffer;
-            const debugBottom = portal.y + portal.height/2 + buffer;
-            
-            // Draw portal area outline
-            renderCtx.strokeStyle = '#ff0000';
-            renderCtx.lineWidth = 2;
-            renderCtx.strokeRect(debugLeft, debugTop, debugRight - debugLeft, debugBottom - debugTop);
-            
-            // Draw actual portal size
-            renderCtx.strokeStyle = '#00ff00';
-            renderCtx.lineWidth = 1;
-            renderCtx.strokeRect(portal.x - portal.width/2, portal.y - portal.height/2, portal.width, portal.height);
-        });
+    // Draw each edge with portal cuts
+    edges.forEach((edge, edgeIndex) => {
+        const cuts = getPortalCutsOnEdge(edge);
         
-        // Show skipped wall segments
-        for (let i = 0; i < outerPoints.length; i++) {
-            const nextI = (i + 1) % outerPoints.length;
-            const outerP1 = outerPoints[i];
-            const outerP2 = outerPoints[nextI];
+        if (cuts.length === 0) {
+            // No portals on this edge, draw the entire edge
+            let p1Outer, p2Outer, p1Inner, p2Inner;
             
-            if (segmentIntersectsPortal(outerP1, outerP2)) {
-                renderCtx.strokeStyle = '#ffff00';
-                renderCtx.lineWidth = 3;
-                renderCtx.beginPath();
-                renderCtx.moveTo(outerP1[0], outerP1[1]);
-                renderCtx.lineTo(outerP2[0], outerP2[1]);
-                renderCtx.stroke();
+            if (edge.name === 'top') {
+                p1Outer = [edge.startX, edge.startY - thickness];
+                p2Outer = [edge.endX, edge.endY - thickness];
+                p1Inner = [edge.startX, edge.startY];
+                p2Inner = [edge.endX, edge.endY];
+            } else if (edge.name === 'bottom') {
+                p1Outer = [edge.startX, edge.startY + thickness];
+                p2Outer = [edge.endX, edge.endY + thickness];
+                p1Inner = [edge.startX, edge.startY];
+                p2Inner = [edge.endX, edge.endY];
+            } else if (edge.name === 'right') {
+                p1Outer = [edge.startX + thickness, edge.startY];
+                p2Outer = [edge.endX + thickness, edge.endY];
+                p1Inner = [edge.startX, edge.startY];
+                p2Inner = [edge.endX, edge.endY];
+            } else if (edge.name === 'left') {
+                p1Outer = [edge.startX - thickness, edge.startY];
+                p2Outer = [edge.endX - thickness, edge.endY];
+                p1Inner = [edge.startX, edge.startY];
+                p2Inner = [edge.endX, edge.endY];
+            }
+            
+            drawWallSegment(p1Outer, p2Outer, p1Inner, p2Inner);
+        } else {
+            // Draw wall segments around portal cuts
+            let currentPos = 0;
+            
+            for (const cut of cuts) {
+                // Draw segment before the cut
+                let p1Outer, p2Outer, p1Inner, p2Inner;
+                
+                if (edge.name === 'top') {
+                    const segStartX = edge.startX + currentPos * (edge.endX - edge.startX) / Math.abs(edge.endX - edge.startX);
+                    const segEndX = cut.start;
+                    
+                    p1Outer = [segStartX, edge.startY - thickness];
+                    p2Outer = [segEndX, edge.endY - thickness];
+                    p1Inner = [segStartX, edge.startY];
+                    p2Inner = [segEndX, edge.endY];
+                    
+                    currentPos = cut.end - edge.startX;
+                } else if (edge.name === 'bottom') {
+                    const segStartX = edge.startX - currentPos * (edge.startX - edge.endX) / Math.abs(edge.startX - edge.endX);
+                    const segEndX = cut.start;
+                    
+                    p1Outer = [segStartX, edge.startY + thickness];
+                    p2Outer = [segEndX, edge.endY + thickness];
+                    p1Inner = [segStartX, edge.startY];
+                    p2Inner = [segEndX, edge.endY];
+                    
+                    currentPos = edge.startX - cut.end;
+                } else if (edge.name === 'right') {
+                    const segStartY = edge.startY + currentPos * (edge.endY - edge.startY) / Math.abs(edge.endY - edge.startY);
+                    const segEndY = cut.start;
+                    
+                    p1Outer = [edge.startX + thickness, segStartY];
+                    p2Outer = [edge.endX + thickness, segEndY];
+                    p1Inner = [edge.startX, segStartY];
+                    p2Inner = [edge.endX, segEndY];
+                    
+                    currentPos = cut.end - edge.startY;
+                } else if (edge.name === 'left') {
+                    const segStartY = edge.startY - currentPos * (edge.startY - edge.endY) / Math.abs(edge.startY - edge.endY);
+                    const segEndY = cut.start;
+                    
+                    p1Outer = [edge.startX - thickness, segStartY];
+                    p2Outer = [edge.endX - thickness, segEndY];
+                    p1Inner = [edge.startX, segStartY];
+                    p2Inner = [edge.endX, segEndY];
+                    
+                    currentPos = edge.startY - cut.end;
+                }
+                
+                if (p1Outer && p2Outer) {
+                    drawWallSegment(p1Outer, p2Outer, p1Inner, p2Inner);
+                }
+            }
+            
+            // Draw final segment after last cut
+            const lastCut = cuts[cuts.length - 1];
+            let p1Outer, p2Outer, p1Inner, p2Inner;
+            
+            if (edge.name === 'top') {
+                p1Outer = [lastCut.end, edge.startY - thickness];
+                p2Outer = [edge.endX, edge.endY - thickness];
+                p1Inner = [lastCut.end, edge.startY];
+                p2Inner = [edge.endX, edge.endY];
+            } else if (edge.name === 'bottom') {
+                p1Outer = [lastCut.end, edge.startY + thickness];
+                p2Outer = [edge.endX, edge.endY + thickness];
+                p1Inner = [lastCut.end, edge.startY];
+                p2Inner = [edge.endX, edge.endY];
+            } else if (edge.name === 'right') {
+                p1Outer = [edge.startX + thickness, lastCut.end];
+                p2Outer = [edge.endX + thickness, edge.endY];
+                p1Inner = [edge.startX, lastCut.end];
+                p2Inner = [edge.endX, edge.endY];
+            } else if (edge.name === 'left') {
+                p1Outer = [edge.startX - thickness, lastCut.end];
+                p2Outer = [edge.endX - thickness, edge.endY];
+                p1Inner = [edge.startX, lastCut.end];
+                p2Inner = [edge.endX, edge.endY];
+            }
+            
+            if (p1Outer && p2Outer) {
+                drawWallSegment(p1Outer, p2Outer, p1Inner, p2Inner);
             }
         }
-    }
+        
+        // Draw corner connecting to next edge
+        const nextEdgeIndex = (edgeIndex + 1) % 4;
+        const corner = corners[edgeIndex];
+        const segmentsPerCorner = 20;
+        
+        for (let i = 0; i < segmentsPerCorner; i++) {
+            const t1 = i / segmentsPerCorner;
+            const t2 = (i + 1) / segmentsPerCorner;
+            const angle1 = corner.startAngle + (corner.endAngle - corner.startAngle) * t1;
+            const angle2 = corner.startAngle + (corner.endAngle - corner.startAngle) * t2;
+            
+            const outerRadius = cornerRadius + thickness;
+            const innerRadius = cornerRadius;
+            
+            const p1Outer = [corner.x + outerRadius * Math.cos(angle1), corner.y + outerRadius * Math.sin(angle1)];
+            const p2Outer = [corner.x + outerRadius * Math.cos(angle2), corner.y + outerRadius * Math.sin(angle2)];
+            const p1Inner = [corner.x + innerRadius * Math.cos(angle1), corner.y + innerRadius * Math.sin(angle1)];
+            const p2Inner = [corner.x + innerRadius * Math.cos(angle2), corner.y + innerRadius * Math.sin(angle2)];
+            
+            drawWallSegment(p1Outer, p2Outer, p1Inner, p2Inner);
+        }
+    });
     
     // Draw floor/playing surface (inner area)
     renderCtx.beginPath();
