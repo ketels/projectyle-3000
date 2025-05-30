@@ -74,6 +74,21 @@ export function updatePuck() {
     gameState.puck.vx *= FRICTION;
     gameState.puck.vy *= FRICTION;
     
+    // Apply gravity to Z-axis
+    gameState.puck.vz -= gameState.puck.gravity;
+    gameState.puck.z += gameState.puck.vz;
+    
+    // Bounce on ground (much less bouncy)
+    if (gameState.puck.z <= 0) {
+        gameState.puck.z = 0;
+        gameState.puck.vz *= -0.3; // Much less bounce
+        
+        // Stop very small bounces
+        if (Math.abs(gameState.puck.vz) < 1.0) {
+            gameState.puck.vz = 0;
+        }
+    }
+    
     // Limit max speed
     const speed = Math.sqrt(gameState.puck.vx ** 2 + gameState.puck.vy ** 2);
     if (speed > MAX_SPEED) {
@@ -544,6 +559,10 @@ export function tryKick(playerId) {
     
     gameState.puck.vx += forceX;
     gameState.puck.vy += forceY;
+    
+    // Add Z-velocity for 3D effect (lift the puck)
+    const horizontalForce = Math.sqrt(forceX * forceX + forceY * forceY);
+    gameState.puck.vz += horizontalForce * 0.15; // Lift proportional to kick strength
     
     // Set cooldown
     gameState.kickCooldowns[playerId] = 15; // Reduced cooldown for more responsive kicking

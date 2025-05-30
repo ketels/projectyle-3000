@@ -85,11 +85,14 @@ try {
         .replace('<link rel="stylesheet" href="css/styles.css">', `<style>\n${cssContent}\n</style>`)
         .replace(scriptTag, `<script>\n${combinedJS}\n</script>`);
     
-    // Write combined file
-    const outputPath = path.join(distDir, 'index.html');
-    fs.writeFileSync(outputPath, combinedHTML);
+    // Write combined file to both dist and root
+    const distOutputPath = path.join(distDir, 'index.html');
+    const rootOutputPath = path.join(__dirname, '..', 'index.html');
     
-    console.log('✅ Build complete! Output in dist/index.html');
+    fs.writeFileSync(distOutputPath, combinedHTML);
+    fs.writeFileSync(rootOutputPath, combinedHTML);
+    
+    console.log('✅ Build complete! Output in dist/index.html and index.html');
     console.log(`📦 File size: ${(combinedHTML.length / 1024).toFixed(2)} KB`);
     
     // Validate the build

@@ -228,7 +228,7 @@ function draw3DWalls(x, y, width, height, cornerRadius, room) {
             
             // Add straight edge points between corners (except after last corner)
             if (cornerIndex < 3) {
-                const straightSegments = 12; // Higher resolution for straight edges too
+                const straightSegments = 36; // Much higher resolution for straight edges
                 
                 for (let i = 1; i <= straightSegments; i++) {
                     const t = i / (straightSegments + 1);
@@ -251,7 +251,7 @@ function draw3DWalls(x, y, width, height, cornerRadius, room) {
         });
         
         // Add final straight edge (left edge)
-        const leftEdgeSegments = 12;
+        const leftEdgeSegments = 36;
         const leftCorner = corners[3];
         for (let i = 1; i < leftEdgeSegments; i++) {
             const t = i / leftEdgeSegments;
@@ -269,30 +269,132 @@ function draw3DWalls(x, y, width, height, cornerRadius, room) {
     // Helper function to check if a wall segment intersects with any portal
     function segmentIntersectsPortal(p1, p2) {
         return portals.some(portal => {
-            // Use exact portal size for collision detection with small buffer
-            const buffer = 5; // Small buffer to ensure clean openings
+            const buffer = 5;
             const portalLeft = portal.x - portal.width/2 - buffer;
             const portalRight = portal.x + portal.width/2 + buffer;
             const portalTop = portal.y - portal.height/2 - buffer;
             const portalBottom = portal.y + portal.height/2 + buffer;
             
-            // Check multiple points along the segment for higher precision
-            const numChecks = 10; // Increased precision
-            for (let i = 0; i <= numChecks; i++) {
-                const t = i / numChecks;
-                const checkX = p1[0] + t * (p2[0] - p1[0]);
-                const checkY = p1[1] + t * (p2[1] - p1[1]);
-                
-                if (checkX >= portalLeft && checkX <= portalRight && 
-                    checkY >= portalTop && checkY <= portalBottom) {
-                    return true;
-                }
-            }
-            return false;
+            // Check if either endpoint is inside the portal
+            const p1Inside = p1[0] >= portalLeft && p1[0] <= portalRight && 
+                           p1[1] >= portalTop && p1[1] <= portalBottom;
+            const p2Inside = p2[0] >= portalLeft && p2[0] <= portalRight && 
+                           p2[1] >= portalTop && p2[1] <= portalBottom;
+            
+            if (p1Inside || p2Inside) return true;
+            
+            // Check if segment crosses portal boundaries
+            const segMinX = Math.min(p1[0], p2[0]);
+            const segMaxX = Math.max(p1[0], p2[0]);
+            const segMinY = Math.min(p1[1], p2[1]);
+            const segMaxY = Math.max(p1[1], p2[1]);
+            
+            // Check if bounding boxes overlap
+            return segMaxX >= portalLeft && segMinX <= portalRight &&
+                   segMaxY >= portalTop && segMinY <= portalBottom;
         });
     }
     
-    // Draw wall segments using the curved points (skip segments that intersect portals)
+    // Helper function to clip a line segment against portal boundaries
+    function clipSegmentToPortals(p1, p2) {
+        let clippedP1 = [...p1];
+        let clippedP2 = [...p2];
+        let fullyClipped = false;
+        
+        for (const portal of portals) {
+            const buffer = 5;
+            const portalLeft = portal.x - portal.width/2 - buffer;
+            const portalRight = portal.x + portal.width/2 + buffer;
+            const portalTop = portal.y - portal.height/2 - buffer;
+            const portalBottom = portal.y + portal.height/2 + buffer;
+            
+            // Check if segment intersects portal
+            const dx = clippedP2[0] - clippedP1[0];
+            const dy = clippedP2[1] - clippedP1[1];
+            
+            // Find intersections with portal boundaries
+            const intersections = [];
+            
+            // Check intersection with left edge
+            if (dx !== 0) {
+                const t = (portalLeft - clippedP1[0]) / dx;
+                if (t >= 0 && t <= 1) {
+                    const y = clippedP1[1] + t * dy;
+                    if (y >= portalTop && y <= portalBottom) {
+                        intersections.push({ t, x: portalLeft, y, edge: 'left' });
+                    }
+                }
+            }
+            
+            // Check intersection with right edge
+            if (dx !== 0) {
+                const t = (portalRight - clippedP1[0]) / dx;
+                if (t >= 0 && t <= 1) {
+                    const y = clippedP1[1] + t * dy;
+                    if (y >= portalTop && y <= portalBottom) {
+                        intersections.push({ t, x: portalRight, y, edge: 'right' });
+                    }
+                }
+            }
+            
+            // Check intersection with top edge
+            if (dy !== 0) {
+                const t = (portalTop - clippedP1[1]) / dy;
+                if (t >= 0 && t <= 1) {
+                    const x = clippedP1[0] + t * dx;
+                    if (x >= portalLeft && x <= portalRight) {
+                        intersections.push({ t, x, y: portalTop, edge: 'top' });
+                    }
+                }
+            }
+            
+            // Check intersection with bottom edge
+            if (dy !== 0) {
+                const t = (portalBottom - clippedP1[1]) / dy;
+                if (t >= 0 && t <= 1) {
+                    const x = clippedP1[0] + t * dx;
+                    if (x >= portalLeft && x <= portalRight) {
+                        intersections.push({ t, x, y: portalBottom, edge: 'bottom' });
+                    }
+                }
+            }
+            
+            // Check if segment is entirely inside portal
+            const p1Inside = clippedP1[0] >= portalLeft && clippedP1[0] <= portalRight && 
+                           clippedP1[1] >= portalTop && clippedP1[1] <= portalBottom;
+            const p2Inside = clippedP2[0] >= portalLeft && clippedP2[0] <= portalRight && 
+                           clippedP2[1] >= portalTop && clippedP2[1] <= portalBottom;
+            
+            if (p1Inside && p2Inside) {
+                fullyClipped = true;
+                break;
+            }
+            
+            // Clip the segment
+            if (intersections.length > 0) {
+                intersections.sort((a, b) => a.t - b.t);
+                
+                if (p1Inside && !p2Inside) {
+                    // P1 is inside, P2 is outside - clip P1 to exit point
+                    const exitIntersection = intersections[intersections.length - 1];
+                    clippedP1 = [exitIntersection.x, exitIntersection.y];
+                } else if (!p1Inside && p2Inside) {
+                    // P1 is outside, P2 is inside - clip P2 to entry point
+                    const entryIntersection = intersections[0];
+                    clippedP2 = [entryIntersection.x, entryIntersection.y];
+                } else if (!p1Inside && !p2Inside && intersections.length >= 2) {
+                    // Segment passes through portal completely
+                    // We need to split this into two segments, but for now just skip it
+                    fullyClipped = true;
+                    break;
+                }
+            }
+        }
+        
+        return { p1: clippedP1, p2: clippedP2, fullyClipped };
+    }
+    
+    // Draw wall segments using the curved points (skip segments that cross portals)
     for (let i = 0; i < outerPoints.length; i++) {
         const nextI = (i + 1) % outerPoints.length;
         const outerP1 = outerPoints[i];
@@ -300,7 +402,7 @@ function draw3DWalls(x, y, width, height, cornerRadius, room) {
         const innerP1 = innerPoints[i];
         const innerP2 = innerPoints[nextI];
         
-        // Skip this wall segment if it intersects with a portal
+        // Skip if segment intersects a portal
         if (segmentIntersectsPortal(outerP1, outerP2) || segmentIntersectsPortal(innerP1, innerP2)) {
             continue;
         }

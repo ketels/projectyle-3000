@@ -72,10 +72,11 @@ export const gameState = {
     isPaused: false,
     camera: { x: 0, y: 0 },
     puck: { 
-        x: 0, y: 0, 
-        vx: 0, vy: 0, 
+        x: 0, y: 0, z: 0,
+        vx: 0, vy: 0, vz: 0,
         currentRoom: 'center',
-        trail: []
+        trail: [],
+        gravity: 0.3
     },
     playerScores: { 1: 0, 2: 0, 3: 0 },
     playerTypes: { 1: 'human', 2: 'ai', 3: 'ai' },

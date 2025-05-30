@@ -48,24 +48,24 @@ function initializeCharacterPositions() {
     const ROOM_SPACING = CONFIG.ROOM_SPACING;
     const ROOM_SIZE = CONFIG.ROOM_SIZE;
     
-    // Reset character positions - adjusted for new room spacing
-    gameState.playerCharacters[1].center = { x: -100, y: -100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[1].player1_zone = { x: 0, y: -ROOM_SIZE * ROOM_SPACING - 100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[1].player2_zone = { x: ROOM_SIZE * ROOM_SPACING + 100, y: -100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[1].player3_zone = { x: -ROOM_SIZE * ROOM_SPACING - 100, y: -100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[1].frantic_zone = { x: -100, y: ROOM_SIZE * ROOM_SPACING + 100, active: false, vx: 0, vy: 0 };
+    // Reset character positions - adjusted for new room spacing (with Z-coordinates)
+    gameState.playerCharacters[1].center = { x: -100, y: -100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[1].player1_zone = { x: 0, y: -ROOM_SIZE * ROOM_SPACING - 100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[1].player2_zone = { x: ROOM_SIZE * ROOM_SPACING + 100, y: -100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[1].player3_zone = { x: -ROOM_SIZE * ROOM_SPACING - 100, y: -100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[1].frantic_zone = { x: -100, y: ROOM_SIZE * ROOM_SPACING + 100, z: 8, active: false, vx: 0, vy: 0 };
     
-    gameState.playerCharacters[2].center = { x: 0, y: 0, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[2].player1_zone = { x: 0, y: -ROOM_SIZE * ROOM_SPACING, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[2].player2_zone = { x: ROOM_SIZE * ROOM_SPACING, y: 0, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[2].player3_zone = { x: -ROOM_SIZE * ROOM_SPACING, y: 0, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[2].frantic_zone = { x: 0, y: ROOM_SIZE * ROOM_SPACING, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[2].center = { x: 0, y: 0, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[2].player1_zone = { x: 0, y: -ROOM_SIZE * ROOM_SPACING, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[2].player2_zone = { x: ROOM_SIZE * ROOM_SPACING, y: 0, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[2].player3_zone = { x: -ROOM_SIZE * ROOM_SPACING, y: 0, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[2].frantic_zone = { x: 0, y: ROOM_SIZE * ROOM_SPACING, z: 8, active: false, vx: 0, vy: 0 };
     
-    gameState.playerCharacters[3].center = { x: 100, y: 100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[3].player1_zone = { x: 100, y: -ROOM_SIZE * ROOM_SPACING + 100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[3].player2_zone = { x: ROOM_SIZE * ROOM_SPACING - 100, y: 100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[3].player3_zone = { x: -ROOM_SIZE * ROOM_SPACING + 100, y: 100, active: false, vx: 0, vy: 0 };
-    gameState.playerCharacters[3].frantic_zone = { x: 100, y: ROOM_SIZE * ROOM_SPACING - 100, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[3].center = { x: 100, y: 100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[3].player1_zone = { x: 100, y: -ROOM_SIZE * ROOM_SPACING + 100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[3].player2_zone = { x: ROOM_SIZE * ROOM_SPACING - 100, y: 100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[3].player3_zone = { x: -ROOM_SIZE * ROOM_SPACING + 100, y: 100, z: 8, active: false, vx: 0, vy: 0 };
+    gameState.playerCharacters[3].frantic_zone = { x: 100, y: ROOM_SIZE * ROOM_SPACING - 100, z: 8, active: false, vx: 0, vy: 0 };
 }
 
 // Update which characters are active based on puck location
